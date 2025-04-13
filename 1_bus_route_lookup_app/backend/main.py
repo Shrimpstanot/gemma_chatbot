@@ -17,4 +17,4 @@ def get_route():
     return jsonify({"routes": possible_routes})
 
 if __name__ == "__main__":
-    get_route()
+    app.run(debug=True)
