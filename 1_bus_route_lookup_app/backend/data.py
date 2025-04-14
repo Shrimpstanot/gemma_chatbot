@@ -1,4 +1,3 @@
-# backend/data.py
 bus_routes = [
     {
         "route": "34A",

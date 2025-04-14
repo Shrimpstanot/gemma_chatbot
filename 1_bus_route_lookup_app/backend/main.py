@@ -1,32 +1,33 @@
-from flask import Flask, jsonify, request, send_from_directory
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from data import bus_routes
 import os
 
-# Use full path to frontend folder
-frontend_folder = os.path.join(os.path.dirname(__file__), "../frontend")
-app = Flask(__name__, static_folder=frontend_folder)
+app = FastAPI()
 
-@app.route("/")
-def serve_homepage():
-    return send_from_directory(app.static_folder, "index.html")
+static_path = os.path.join(os.path.dirname(__file__), "../static")
+app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-@app.route("/script.js")
-def serve_script():
-    return send_from_directory(frontend_folder, "script.js")
+@app.get("/")
+async def serve_homepage():
+    return FileResponse(os.path.join(static_path, "index.html"))
 
-@app.route("/get-route", methods=["POST"])
-def get_route():
-    data = request.json
-    start = data.get("start")
-    destination = data.get("destination")
-
+class RouteRequest(BaseModel):
+    start: str
+    destination: str
+    
+@app.post("/get-route")
+async def get_route(req: RouteRequest):
+    start = req.start.capitalize()
+    destination = req.destination.capitalize()
+    
     possible_routes = []
     for route in bus_routes:
         stops = route["stops"]
         if start in stops and destination in stops and stops.index(start) < stops.index(destination):
             possible_routes.append(route["route"])
-
-    return jsonify({"routes": possible_routes})
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    
+    return JSONResponse(content={"routes": possible_routes})
+            
