@@ -23,11 +23,40 @@ async def get_route(req: RouteRequest):
     start = req.start.capitalize()
     destination = req.destination.capitalize()
     
-    possible_routes = []
+    results = []
     for route in bus_routes:
         stops = route["stops"]
         if start in stops and destination in stops and stops.index(start) < stops.index(destination):
-            possible_routes.append(route["route"])
+            results.append({
+                "type": "direct",
+                "route": route["route"],
+                "from": start,
+                "to": destination
+            })
+            
+    # inter-line connection
+    for route1 in bus_routes:
+        if start not in route1["stops"]:
+            continue
+        
+        for route2 in bus_routes:
+            if route1["route"] == route2["route"] or destination not in route2["stops"]:
+                continue
+            
+            transfer_stops = set(route1["stops"]) & set(route2["stops"])
+            for transfer in transfer_stops:
+                if (route1["stops"].index(start) < route1["stops"].index(transfer) and
+                        route2["stops"].index(transfer) < route2["stops"].index(destination)):
+                    results.append({
+                        "type": "transfer",
+                        "route1": route1["route"],
+                        "from": start,
+                        "to": transfer,
+                        "route2": route2["route"],
+                        "from2": transfer,
+                        "to2": destination
+                    })
     
-    return JSONResponse(content={"routes": possible_routes})
+    return JSONResponse(content={"routes": results})
+        
             
