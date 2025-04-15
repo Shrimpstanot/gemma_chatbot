@@ -1,15 +1,73 @@
-<input type="text" id="start" placeholder="start point" />
-<input type="text" id="destination" placeholder="destination" />
-<button onclick="lookupRoute()">Find route</button>
-<div id="result"></div>
-<style>
-    .direct{
-        color: cornflowerblue;
-        margin-bottom: 8px;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bus Route Lookup</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f8f8;
+      margin: 0;
+      padding: 0;
     }
-    .transfer{
-        color: blueviolet;
-        margin-bottom: 8px;
+    .container {
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-</style>
-<script src="/static/script.js"></script>
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    input[type="text"] {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #007BFF;
+      border: none;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-bottom: 20px;
+      width: 100%;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #0069d9;
+    }
+    #result {
+      margin-top: 20px;
+    }
+    .direct {
+      color: cornflowerblue;
+      margin-bottom: 8px;
+    }
+    .transfer {
+      color: blueviolet;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Bus Route Lookup</h1>
+    <input type="text" id="start" placeholder="Start point" />
+    <input type="text" id="destination" placeholder="Destination" />
+    <button onclick="lookupRoute()">Find route</button>
+    <div id="result"></div>
+  </div>
+  <script src="/static/script.js"></script>
+</body>
+</html>
