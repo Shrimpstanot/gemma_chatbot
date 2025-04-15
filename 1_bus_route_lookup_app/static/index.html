@@ -1,7 +1,15 @@
-<div>stops are: A B C D E F G H X Y Z</div>
 <input type="text" id="start" placeholder="start point" />
 <input type="text" id="destination" placeholder="destination" />
 <button onclick="lookupRoute()">Find route</button>
 <div id="result"></div>
-
+<style>
+    .direct{
+        color: cornflowerblue;
+        margin-bottom: 8px;
+    }
+    .transfer{
+        color: blueviolet;
+        margin-bottom: 8px;
+    }
+</style>
 <script src="/static/script.js"></script>

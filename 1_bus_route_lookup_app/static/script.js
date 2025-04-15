@@ -18,17 +18,22 @@ async function lookupRoute() {
       const data = await response.json();
   
       if (data.routes.length > 0) {
-        let messages = [];
+        resultDiv.innerHTML = "";
 
         data.routes.forEach(route => {
+          const routeDiv = document.createElement("Div");
           if (route.type === "direct") {
-            messages.push(`Direct route: ${route.route} from ${route.from} to ${route.to}`);
+            routeDiv.className = "direct";
+            routeDiv.innerText = `Direct route: ${route.route} from ${route.from} to ${route.to}.`;
           } else if (route.type === "transfer") {
-            messages.push(`Transfer route: ${route.route1} from ${route.from} to ${route.to}, then ${route.route2} from ${route.from2} to ${route.to2}`);
+            routeDiv.className = "transfer";
+            routeDiv.innerText = `Transfer route: ${route.route1} from ${route.from} to ${route.to},
+             then ${route.route2} from ${route.from2} to ${route.to2}`;
           }
-        });
+        
 
-        resultDiv.innerText = messages.join("\n");
+        resultDiv.appendChild(routeDiv);
+      });
       } else {
         resultDiv.innerText = "No routes found.";
       }
