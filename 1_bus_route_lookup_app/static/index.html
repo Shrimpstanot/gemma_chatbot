@@ -24,7 +24,7 @@
       margin-bottom: 20px;
       color: #333;
     }
-    input[type="text"] {
+    input[list] {
       display: block;
       width: 100%;
       padding: 10px;
@@ -63,8 +63,29 @@
 <body>
   <div class="container">
     <h1>Bus Route Lookup</h1>
-    <input type="text" id="start" placeholder="Start point" />
-    <input type="text" id="destination" placeholder="Destination" />
+    <input list="stops" id="start" placeholder="Start point" />
+    <input list="stops" id="destination" placeholder="Destination" />
+    <datalist id="stops">
+        <option value="A">
+        <option value="B">
+        <option value="C">
+        <option value="D">
+        <option value="E">
+        <option value="F">
+        <option value="G">
+        <option value="H">
+        <option value="L">
+        <option value="M">
+        <option value="N">
+        <option value="O">
+        <option value="P">
+        <option value="Q">
+        <option value="R">
+        <option value="S">
+        <option value="X">
+        <option value="Y">
+        <option value="Z">
+      </datalist>
     <button onclick="lookupRoute()">Find route</button>
     <div id="result"></div>
   </div>
