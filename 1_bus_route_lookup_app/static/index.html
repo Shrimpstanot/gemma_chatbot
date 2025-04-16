@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <meta charset="UTF-8">
   <title>Bus Route Lookup</title>
   <style>
@@ -58,6 +63,11 @@
       color: blueviolet;
       margin-bottom: 8px;
     }
+    #map {
+        height: 400px;
+        margin-top: 20px;
+        border: 1px solid #ccc;
+      }
   </style>
 </head>
 <body>
@@ -89,6 +99,7 @@
     <button onclick="lookupRoute()">Find route</button>
     <div id="result"></div>
   </div>
+  <div id="map" style="height: 400px; margin-top: 20px;"></div>
   <script src="/static/script.js"></script>
 </body>
 </html>
