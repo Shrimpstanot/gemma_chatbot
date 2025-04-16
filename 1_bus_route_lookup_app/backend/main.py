@@ -56,7 +56,21 @@ async def get_route(req: RouteRequest):
                         "from2": transfer,
                         "to2": destination
                     })
-    
+
+    def count_stops(route):
+        if route["type"] == "direct":
+            for r in bus_routes:
+                if r["route"] == route["route"]:
+                    return r["stops"].index(route["to"]) - r["stops"].index(route["from"])
+        elif route["type"] == "transfer":
+            first_leg = second_leg = 0
+            for r in bus_routes:
+                if r["route"] == route["route1"]:
+                    first_leg = r["stops"].index(route["to"]) - r["stops"].index(route["from"])
+                if r["route"] == route["route2"]:
+                    second_leg = r["stops"].index(route["to2"]) - r["stops"].index(route["from2"])
+            return first_leg + second_leg
+        return float('inf')
+
+    results.sort(key=count_stops)
     return JSONResponse(content={"routes": results})
-        
-            

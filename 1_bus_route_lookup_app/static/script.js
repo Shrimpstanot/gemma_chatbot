@@ -20,8 +20,13 @@ async function lookupRoute() {
       if (data.routes.length > 0) {
         resultDiv.innerHTML = "";
 
+        const header = document.createElement("div");
+        header.innerText = "Routes sorted from fastest to slowest:";
+        header.style.marginBottom = "10px";
+        resultDiv.appendChild(header);
+
         data.routes.forEach(route => {
-          const routeDiv = document.createElement("Div");
+          const routeDiv = document.createElement("div");
           if (route.type === "direct") {
             routeDiv.className = "direct";
             routeDiv.innerText = `Direct route: ${route.route} from ${route.from} to ${route.to}.`;
@@ -30,10 +35,8 @@ async function lookupRoute() {
             routeDiv.innerText = `Transfer route: ${route.route1} from ${route.from} to ${route.to},
              then ${route.route2} from ${route.from2} to ${route.to2}`;
           }
-        
-
-        resultDiv.appendChild(routeDiv);
-      });
+          resultDiv.appendChild(routeDiv);
+        });
       } else {
         resultDiv.innerText = "No routes found.";
       }
