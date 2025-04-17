@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import torch
 import torch.nn as nn
 import joblib
@@ -39,20 +39,16 @@ model.eval()
 scaler = joblib.load(filename=scaler_path)
 
 class InputData(BaseModel):
-    distance: float
-    speed: float
-    traffic_level: float
-    weather: int
-    road_type: int
-    day_of_week: int
+    distance: float = Field(..., gt=0, description="Distance in kilometers")
+    speed: float = Field(..., gt=0, description="Speed in km/h, must be positive")
+    traffic_level: float = Field(..., ge=0, le=1, description="Traffic level between 0 and 1")
+    weather: int = Field(..., ge=0, le=3, description="Weather code: 0=clear, 1=rainy, 2=foggy, 3=snowy")
+    road_type: int = Field(..., ge=0, le=3, description="Road type code: 0=highway, 1=urban, 2=residential, 3=rural")
+    day_of_week: int = Field(..., ge=0, le=1, description="Day code: 0=weekday, 1=weekend")
 
 
 @app.post("/predict")
 def predict(data: InputData):
-    if not (0 <= data.traffic_level <= 1):
-        raise HTTPException(status_code=400, detail="Traffic level must be between 0 and 1.")
-    if data.speed <= 0:
-        raise HTTPException(status_code=400, detail="Speed must be positive.")
     
     input_values = [
         data.speed,
