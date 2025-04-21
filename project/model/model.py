@@ -4,6 +4,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
+import joblib
 
 le = LabelEncoder()
 df = pd.read_parquet("project/data/interpolated_trips.parquet")
@@ -33,17 +34,28 @@ df["route_encoded"] = le.fit_transform(df["route_short_name"])
 #variables
 features = ['stop_sequence', 'route_encoded', 'hour_of_day', 'cumulative_distance']
 target = 'time_from_start'
-X = df[features]
-y = df[target]
 
-#train test split
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
+#unique train test split
+unique_trips = df['trip_id'].unique()
+train_ids, test_ids = train_test_split(unique_trips, test_size=0.2, random_state=42)
+
+train_df = df[df['trip_id'].isin(train_ids)]
+test_df = df[df['trip_id'].isin(test_ids)]
+features = ['stop_sequence', 'route_encoded', 'hour_of_day', 'cumulative_distance']
+target = 'time_from_start'
+
+X_train = train_df[features]
+y_train = train_df[target]
+
+X_test = test_df[features]
+y_test = test_df[target]
 
 #random forest model
 model = RandomForestRegressor(n_estimators=100, random_state=42)
 model.fit(X_train, y_train)
+
+#save model
+joblib.dump(model, 'project/model/eta_model.pkl')
 
 #metric eval
 pred = model.predict(X_test)
