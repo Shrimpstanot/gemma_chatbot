@@ -1,4 +1,0 @@
-service_id,service_name,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-0,WEEKDAYS,1,1,1,1,1,0,0,20240305,20241231
-6,SATURDAY,0,0,0,0,0,1,0,20240305,20241231
-7,SUNDAY,0,0,0,0,0,0,1,20240305,20241231
