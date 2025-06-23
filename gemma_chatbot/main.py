@@ -1,5 +1,6 @@
 #main.py
 from fastapi import FastAPI, File, Form, UploadFile
+from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
