@@ -41,7 +41,7 @@ async def chat_with_image(
         contents=[
             types.Part.from_bytes(
                 data=user_file,
-                mime_type="image/jpeg",
+                mime_type=image.content_type,
             ),
             caption
         ]
