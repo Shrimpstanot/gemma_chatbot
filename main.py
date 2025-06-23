@@ -9,6 +9,9 @@ import os
 dotenv.load_dotenv(dotenv_path=".env")
 GEMMA_API_KEY = os.getenv("GEMMA_API_KEY")
 
+# Initialize the Google GenAI client
+client = genai.Client(api_key=GEMMA_API_KEY)
+
 class ChatMessage(BaseModel):
     message: str
 
@@ -21,7 +24,6 @@ async def root():
 
 @app.post("/chat")
 async def create_chat_message(user_message: ChatMessage):
-    client = genai.Client(api_key=GEMMA_API_KEY)
     response = client.models.generate_content(
         model="gemma-3-27b-it", contents=[user_message.message]
     )
