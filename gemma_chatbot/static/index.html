@@ -98,9 +98,52 @@
         const messageInput = document.getElementById("message-input");
         const fileInput = document.getElementById('file-input');
         const chatWindow = document.getElementById('chat-window');
-        const fileNameDisplay = document.getElementById('file-name-display'); // NEW: Get the display element
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
 
-        // NEW: Listen for changes on the file input
+        // WebSocket
+        ws.onopen = function() {
+            console.log("WebSocket connection established.");
+            appendMessage("System", "WebSocket connection established. You can start chatting!");
+        };
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'start_of_stream') {
+                // Create a new paragraph for Gemma's response
+                const p = document.createElement('p');
+                const strong = document.createElement('strong');
+                strong.textContent = 'Gemma: ';
+                p.appendChild(strong);
+                
+                // Append the new paragraph to the chat window
+                chatWindow.appendChild(p);
+                
+                // Set it as the current message element
+                currentGemmaMessageElement = p; 
+
+            } else if (data.type === 'stream') {
+                if (currentGemmaMessageElement) {
+                    // Append the new token to the existing text content
+                    currentGemmaMessageElement.append(document.createTextNode(data.token));
+                    chatWindow.scrollTop = chatWindow.scrollHeight; // Auto-scroll
+                }
+            } else if (data.type === 'end_of_stream') {
+                // The message is complete, so we clear the current element reference
+                currentGemmaMessageElement = null; 
+
+            } else if (data.type === 'error') {
+                appendMessage("Error", data.message);
+            }
+        };
+
+        ws.onclose = function() {
+            console.log("WebSocket connection closed.");
+            appendMessage("System", "WebSocket connection closed. Please refresh to reconnect.");
+        };
+
+        // Listen for changes on the file input
         fileInput.addEventListener('change', function() {
             const file = fileInput.files[0];
             if (file) {
@@ -113,58 +156,16 @@
         });
 
         // Listen for the form submission
-        chatForm.addEventListener("submit", async function(event) {
-            event.preventDefault();
+        chatForm.addEventListener("submit", function(event) {
+            event.preventDefault(); // Prevent the form from submitting normally
 
-            const message = messageInput.value;
-            const file = fileInput.files[0];
-
-            if (!message) {
-                return;
+            const message = messageInput.value.trim();
+            if (message) {
+                // Send the message through WebSocket
+                ws.send(JSON.stringify({ type: 'message', message: message }));
+                appendMessage("You", message); // Display the message in the chat window
+                messageInput.value = ''; // Clear the input field
             }
-
-            appendMessage("you", message);
-
-            let endpoint = "/chat";
-            let body;
-
-            if (file) {
-                endpoint = "/chat-with-image";
-                const formData = new FormData();
-                formData.append("caption", message);
-                formData.append("image", file);
-                body = formData;
-            } else {
-                endpoint = "/chat";
-                body = JSON.stringify({ message: message });
-            }
-
-            const fetchOptions = {
-                method: "POST",
-                body: body,
-            };
-
-            if (!file) {
-                fetchOptions.headers = { 'Content-Type': 'application/json' };
-            }
-
-            try {
-                const response = await fetch(endpoint, fetchOptions);
-                if (!response.ok) {
-                    const errorData = await response.text();
-                    throw new Error(`Network response was not ok: ${errorData}`);
-                }
-                const data = await response.json();
-                appendMessage("Gemma", data.response);
-            } catch (error) {
-                console.error("Error:", error);
-                appendMessage("Error", "Sorry, something went wrong.");
-            }
-            
-            // Clear the input fields after sending
-            messageInput.value = "";
-            fileInput.value = "";
-            fileNameDisplay.textContent = ""; // NEW: Clear the file name display
         });
 
         function appendMessage(sender, text) {
