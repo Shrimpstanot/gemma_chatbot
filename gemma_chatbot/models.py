@@ -2,7 +2,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text
 from sqlalchemy.orm import DeclarativeBase, relationship 
 from datetime import datetime
-from .database import Base  
+from database import Base  
 
 # -- Our three models --
 class User(Base):
@@ -41,7 +41,7 @@ class Message(Base):
     role = Column(String, nullable=False)  # "user" or "assistant"
     content = Column(Text, nullable=False) # Use Text for long messages
     file_path = Column(String, nullable=True) # Optional path to an uploaded file
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     # This relationship links a Message back to its Conversation
     conversation = relationship("Conversation", back_populates="messages")
