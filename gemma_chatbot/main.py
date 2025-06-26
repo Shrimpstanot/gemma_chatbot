@@ -1,10 +1,13 @@
 #main.py
-from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect, Depends
+from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
+from database import SessionLocal
+from models import Message, Conversation, User
 import dotenv
 import os
 
@@ -21,9 +24,17 @@ class ChatMessage(BaseModel):
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+async def get_db():
+    try:
+        session = SessionLocal()
+        yield session
+    finally:
+        await session.close()
+        
+
 @app.get("/")
 async def root():
-    return HTMLResponse(content=open("static/index.html").read(), status_code=200)
+    return FileResponse("static/index.html")
 
 @app.post("/chat")
 async def create_chat_message(user_message: ChatMessage):
@@ -51,40 +62,68 @@ async def chat_with_image(
     
     return {"response": response.text}
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
     await websocket.accept()
     try:
+        # For simplicity, we'll assume a single conversation for now.
+        # In a real app, you'd get this from the user's session or initial message.
+        conversation_id = 1 
+
         while True:
             data = await websocket.receive_json()
-            message = data.get("message", "").strip()
+            message_text = data.get("message", "").strip()
 
-            if not message:
+            if not message_text:
                 await websocket.send_json({"type": "error", "message": "Empty message received."})
                 continue
-
-            # Assuming the correct method is generate_content with stream=True
+            
+            # --- Save the user's message ---
+            user_message = Message(
+                role="user",
+                content=message_text,
+                conversation_id=conversation_id
+            )
+            db.add(user_message)
+            await db.commit()
+            
+            # --- Stream response from Gemma ---
             stream = client.models.generate_content_stream(
                 model="gemma-3-27b-it",
-                contents=[message],
-                config = types.GenerateContentConfig(temperature=1.5)
+                contents=[message_text],
+                # Using a different name for the config object
+                generation_config=types.GenerateContentConfig(temperature=0.7)
             )
 
-            # Send a marker to the frontend that a new response is starting
+            # --- THE FIX: Accumulator Pattern ---
+            # 1. Create a list to hold the response chunks
+            full_response_text = []
+            
             await websocket.send_json({"type": "start_of_stream"})
 
             for chunk in stream:
-                # Make sure the chunk has text to avoid sending empty messages
                 if chunk.text:
+                    # 2. Append each chunk to our list
+                    full_response_text.append(chunk.text)
                     await websocket.send_json({"type": "stream", "token": chunk.text})
             
-            # Send a marker that the stream is finished
             await websocket.send_json({"type": "end_of_stream"})
 
+            # 3. Join the list into a single string
+            final_content = "".join(full_response_text)
+
+            # 4. Save the complete assistant message
+            assistant_message = Message(
+                role="assistant",
+                content=final_content,
+                conversation_id=conversation_id
+            )
+            db.add(assistant_message)
+            await db.commit()
+
     except WebSocketDisconnect:
-        print("Client disconnected.") # Good for debugging
-        await websocket.close()
+        print("Client disconnected.")
+        # No need to call websocket.close() inside WebSocketDisconnect
     except Exception as e:
         print(f"An error occurred: {e}")
-        # Inform the client of the error
         await websocket.send_json({"type": "error", "message": "An internal server error occurred."})
-        await websocket.close()
+        # FastAPI handles closing the websocket on unhandled exceptions
