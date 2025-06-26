@@ -1,5 +1,5 @@
 # models.py
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, func
 from sqlalchemy.orm import DeclarativeBase, relationship 
 from datetime import datetime
 from database import Base  
@@ -12,7 +12,7 @@ class User(Base):
     username = Column(String(50), unique=True, index=True)
     email = Column(String(100), unique=True, index=True)
     hashed_password = Column(String(128), nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
     # This relationship links a User to their Conversations
     # 'back_populates' creates a two-way link
@@ -25,7 +25,7 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, default="New Chat")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
     
     # This relationship links a Conversation back to its User
     user = relationship("User", back_populates="conversations")
@@ -41,7 +41,7 @@ class Message(Base):
     role = Column(String, nullable=False)  # "user" or "assistant"
     content = Column(Text, nullable=False) # Use Text for long messages
     file_path = Column(String, nullable=True) # Optional path to an uploaded file
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, server_default=func.now())
 
     # This relationship links a Message back to its Conversation
     conversation = relationship("Conversation", back_populates="messages")

@@ -18,6 +18,13 @@ SessionLocal = async_sessionmaker(
     future=True  # Use future mode for SQLAlchemy 2.0 compatibility
 )
 
+async def get_db():
+    try:
+        session = SessionLocal()
+        yield session
+    finally:
+        await session.close()
+        
 class Base(DeclarativeBase):
     """Base class for SQLAlchemy models."""
     pass
