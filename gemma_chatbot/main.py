@@ -1,17 +1,19 @@
 # main.py
 import datetime
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-# Local imports (make sure these files exist and are correct)
-from database import SessionLocal, get_db  # Assuming get_db is in database.py
-from models import Message, Conversation
+# Local imports
+from database import SessionLocal, get_db  
+from models import Message, Conversation, User
+from security import verify_password, create_access_token, get_user, pwd_context
 
-# Initialize the Google GenAI client (assuming this part is correct)
+# Initialize the Google GenAI client
 from google import genai
 from google.genai import types
 import dotenv
@@ -33,7 +35,20 @@ class ConversationCreate(ConversationBase):
 class ConversationSchema(ConversationBase):
     id: int
     user_id: int
-    # THE FIX IS HERE: Use datetime.datetime for the type hint
+    created_at: datetime.datetime
+
+    class Config:
+        orm_mode = True
+        
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+    
+class UserSchema(BaseModel):
+    id: int
+    username: str
+    email: str
     created_at: datetime.datetime
 
     class Config:
@@ -52,6 +67,36 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def root():
     return FileResponse("static/index.html")
 
+@app.post("/users/", response_model=UserSchema)
+async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+    hashed_password = pwd_context.hash(user_data.password)
+    new_user = User(
+        username=user_data.username,
+        email=user_data.email,
+        hashed_password=hashed_password,
+        created_at=datetime.datetime.now(datetime.timezone.utc)
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user
+
+@app.post("/token")
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db)
+):
+    user = await get_user(db, form_data.username)
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    access_token_expires = datetime.timedelta(minutes=30)
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+    
+
 @app.get("/conversations", response_model=list[ConversationSchema])
 async def get_conversations(db: AsyncSession = Depends(get_db)):
     query = select(Conversation).where(Conversation.user_id == 1).order_by(Conversation.created_at.desc())
@@ -67,7 +112,7 @@ async def create_conversation(
     new_conversation = Conversation(
         title=conversation_data.title,
         user_id=1,
-        created_at=datetime.datetime.now(datetime.timezone.utc) # Set TZ-aware timestamp
+        created_at=datetime.datetime.now(datetime.timezone.utc)
     )
     db.add(new_conversation)
     await db.commit()
@@ -76,8 +121,6 @@ async def create_conversation(
 
 
 # --- WebSocket Endpoint ---
-
-# In main.py
 
 @app.websocket("/ws/{conversation_id}")
 async def websocket_endpoint(
