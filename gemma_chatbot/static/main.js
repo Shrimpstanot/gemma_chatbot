@@ -4,6 +4,7 @@ const messageInput = document.getElementById("message-input");
 const chatWindow = document.getElementById('chat-window');
 const newChatBtn = document.getElementById('new-chat-btn');
 const conversationList = document.getElementById('conversation-list');
+const fileInput = document.getElementById('file-input');
 
 // --- State Management ---
 let activeConversationId = null;
@@ -40,6 +41,58 @@ function processTokenQueue() {
     }, 10);
 }
 
+// --- File Upload Logic ---
+fileInput.addEventListener('change', async (event) => {
+    if (!activeConversationId) {
+        alert("Please select a conversation before uploading files.");
+        return;
+    }
+
+    const files = event.target.files;
+    if (!files.length) {
+        return; // No files selected
+    }
+
+    const formData = new FormData();
+    for (const file of files) {
+        formData.append('files', file);
+    }
+
+    // Get the token for the Authorization header
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+        window.location.href = "/login";
+        return;
+    }
+
+    try {
+        const response = await fetch(`/conversations/${activeConversationId}/files`, {
+            method: 'POST',
+            body: formData,
+            // IMPORTANT: Do NOT set Content-Type. The browser does it for you with FormData.
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'File upload failed');
+        }
+
+        alert('Files uploaded successfully!');
+        
+        // Reset the file input so the user can upload the same file again if needed
+        fileInput.value = ''; 
+
+        // Refresh the chat history to show the "File uploaded" message from the server
+        connectWebSocket(activeConversationId);
+
+    } catch (error) {
+        console.error('File Upload Error:', error);
+        alert(`Error uploading files: ${error.message}`);
+    }
+});
 // --- WebSocket Logic ---
 function connectWebSocket(conversationId) {
     if (ws) {
