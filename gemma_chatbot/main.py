@@ -7,11 +7,12 @@ from starlette.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from jose import jwt, JWTError
 
 # Local imports
 from database import SessionLocal, get_db  
 from models import Message, Conversation, User
-from security import verify_password, create_access_token, get_user, pwd_context
+from security import verify_password, create_access_token, get_user, pwd_context, get_current_user, SECRET_KEY, ALGORITHM
 
 # Initialize the Google GenAI client
 from google import genai
@@ -22,6 +23,20 @@ import os
 dotenv.load_dotenv(dotenv_path=".env")
 GEMMA_API_KEY = os.getenv("GEMMA_API_KEY")
 client = genai.Client(api_key=GEMMA_API_KEY)
+
+async def get_current_user_from_token(token: str, db: AsyncSession) -> User | None:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+    except JWTError:
+        return None
+
+    user = await get_user(db, username)
+    return user
 
 
 # --- Pydantic Schemas ---
@@ -67,6 +82,14 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def root():
     return FileResponse("static/index.html")
 
+@app.get("/login")
+async def login():
+    return FileResponse("static/login.html")
+
+@app.get("/register")
+async def register():
+    return FileResponse("static/register.html")
+
 @app.post("/users/", response_model=UserSchema)
 async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     hashed_password = pwd_context.hash(user_data.password)
@@ -98,8 +121,8 @@ async def login_for_access_token(
     
 
 @app.get("/conversations", response_model=list[ConversationSchema])
-async def get_conversations(db: AsyncSession = Depends(get_db)):
-    query = select(Conversation).where(Conversation.user_id == 1).order_by(Conversation.created_at.desc())
+async def get_conversations(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    query = select(Conversation).where(Conversation.user_id == current_user.id).order_by(Conversation.created_at.desc())
     result = await db.execute(query)
     conversations = result.scalars().all()
     return conversations
@@ -107,11 +130,12 @@ async def get_conversations(db: AsyncSession = Depends(get_db)):
 @app.post("/conversations", response_model=ConversationSchema)
 async def create_conversation(
     conversation_data: ConversationCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     new_conversation = Conversation(
         title=conversation_data.title,
-        user_id=1,
+        user_id=current_user.id,
         created_at=datetime.datetime.now(datetime.timezone.utc)
     )
     db.add(new_conversation)
@@ -130,9 +154,39 @@ async def websocket_endpoint(
 ):
     await websocket.accept()
 
-    # --- THE FIX: PART 1 ---
-    # Load history from DB and immediately convert it to a plain list of dicts.
-    # This is now our "source of truth" for the rest of the connection.
+    # --- WebSocket Authentication ---
+    try:
+        auth_data = await websocket.receive_json()
+        if auth_data.get("type") != "auth" or not auth_data.get("token"):
+            await websocket.close(code=1008, reason="Authentication failed")
+            return
+
+        token = auth_data["token"]
+        user = await get_current_user_from_token(token, db)
+
+        if not user:
+            await websocket.close(code=1008, reason="Invalid user")
+            return
+        
+        # Check if the user has access to this conversation
+        convo_query = select(Conversation).where(
+            Conversation.id == conversation_id, 
+            Conversation.user_id == user.id
+        )
+        result = await db.execute(convo_query)
+        conversation = result.scalar_one_or_none()
+        if not conversation:
+            await websocket.close(code=1003, reason="Conversation not found or access denied")
+            return
+
+    except Exception as e:
+        print(f"Auth Error: {e}")
+        await websocket.close(code=1011, reason="An error occurred during authentication.")
+        return
+
+    print(f"User {user.username} connected to conversation {conversation_id}")
+
+    # --- Load Chat History (Now that user is authenticated) ---
     history_query = (
         select(Message)
         .where(Message.conversation_id == conversation_id)

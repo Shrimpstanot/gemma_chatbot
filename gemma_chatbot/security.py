@@ -6,6 +6,9 @@ from models import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import dotenv
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException
+from database import get_db
 
 dotenv.load_dotenv(dotenv_path=".env")
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -15,6 +18,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = context.CryptContext(
     schemes=["bcrypt"],
 )
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed password."""
@@ -32,8 +37,28 @@ def create_access_token(data: dict, expires_delta: datetime.timedelta | None = N
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def get_user(db: AsyncSession, username: str) -> User | None:
-    """Retrieve a user by ID from the database."""
+async def get_user(db: AsyncSession, username: str) -> User | None:
+    """Retrieve a user by username from the database."""
     query = select(User).where(User.username == username)
-    result = db.execute(query)
+    result = await db.execute(query)
     return result.scalar_one_or_none()
+
+async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User | None:
+    """Get the current user from the JWT token."""
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = await get_user(db, username)
+    if user is None:
+        raise credentials_exception
+    return user
