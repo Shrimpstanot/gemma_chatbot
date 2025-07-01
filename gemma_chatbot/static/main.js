@@ -5,101 +5,53 @@ const chatWindow = document.getElementById('chat-window');
 const newChatBtn = document.getElementById('new-chat-btn');
 const conversationList = document.getElementById('conversation-list');
 const fileInput = document.getElementById('file-input');
+const logoutBtn = document.getElementById('logout-btn');
 
 // --- State Management ---
 let activeConversationId = null;
 let ws = null;
 let currentGemmaMessageElement = null;
+let thinkingIndicator = null;
 
-// --- TYPING EFFECT LOGIC (FINAL VERSION) ---
+// --- Token Streaming & Rendering Logic ---
 let tokenQueue = [];
 let animationIntervalId = null;
-let streamEnded = false; // NEW: Flag to track if the stream is complete
+let streamEnded = false;
 
 function processTokenQueue() {
-    if (animationIntervalId) return; // An animation is already running
+    if (animationIntervalId) return; // Animation is already running
 
     animationIntervalId = setInterval(() => {
         if (tokenQueue.length > 0) {
             const token = tokenQueue.shift();
             if (currentGemmaMessageElement) {
-                currentGemmaMessageElement.append(document.createTextNode(token));
+                const bubble = currentGemmaMessageElement.querySelector('.message-bubble');
+                // Append the raw token to a temporary storage or directly to the bubble's text content
+                // For simplicity, we'll just re-parse the whole thing each time.
+                const currentText = bubble.getAttribute('data-raw-text') + token;
+                bubble.setAttribute('data-raw-text', currentText);
+                bubble.innerHTML = marked.parse(currentText);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
             }
-        } else {
-            // Queue is empty, stop the animation
+        } else if (streamEnded) {
+            // Queue is empty and stream has ended
             clearInterval(animationIntervalId);
             animationIntervalId = null;
-            
-            // --- THE FIX ---
-            // Now that the animation is finished, check if the stream also ended
-            if (streamEnded) {
-                currentGemmaMessageElement = null;
-                streamEnded = false; // Reset the flag
-            }
+            currentGemmaMessageElement = null;
+            streamEnded = false; // Reset for next message
         }
-    }, 10);
+    }, 10); // 10ms delay as requested
 }
 
-// --- File Upload Logic ---
-fileInput.addEventListener('change', async (event) => {
-    if (!activeConversationId) {
-        alert("Please select a conversation before uploading files.");
-        return;
-    }
 
-    const files = event.target.files;
-    if (!files.length) {
-        return; // No files selected
-    }
+// --- WebSocket & Message Handling ---
 
-    const formData = new FormData();
-    for (const file of files) {
-        formData.append('files', file);
-    }
-
-    // Get the token for the Authorization header
-    const token = localStorage.getItem("access_token");
-    if (!token) {
-        window.location.href = "/login";
-        return;
-    }
-
-    try {
-        const response = await fetch(`/conversations/${activeConversationId}/files`, {
-            method: 'POST',
-            body: formData,
-            // IMPORTANT: Do NOT set Content-Type. The browser does it for you with FormData.
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'File upload failed');
-        }
-
-        alert('Files uploaded successfully!');
-        
-        // Reset the file input so the user can upload the same file again if needed
-        fileInput.value = ''; 
-
-        // Refresh the chat history to show the "File uploaded" message from the server
-        connectWebSocket(activeConversationId);
-
-    } catch (error) {
-        console.error('File Upload Error:', error);
-        alert(`Error uploading files: ${error.message}`);
-    }
-});
-// --- WebSocket Logic ---
 function connectWebSocket(conversationId) {
     if (ws) {
         ws.close();
     }
     if (!conversationId) {
-        chatWindow.innerHTML = '<p>Select a conversation or start a new one.</p>';
+        chatWindow.innerHTML = '<div class="text-center text-secondary">Select a conversation or start a new one.</div>';
         return;
     }
 
@@ -107,117 +59,120 @@ function connectWebSocket(conversationId) {
 
     socket.onopen = () => {
         console.log("WebSocket connection established.");
-        // First, get the token from localStorage
         const token = localStorage.getItem("access_token");
         if (!token) {
-            console.error("No access token found. Please log in.");
-            socket.close();
-            // Optionally, redirect to login page
-            window.location.href = "/login.html";
+            window.location.href = "/login";
             return;
         }
-        // Send the token as the first message
         socket.send(JSON.stringify({ type: "auth", token: token }));
     };
 
-    socket.onmessage = function(event) {
+    socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
         handleWebSocketMessage(data);
     };
 
-    socket.onclose = () => {
-        console.log("WebSocket connection closed.");
-    };
-
-    socket.onerror = (error) => {
-        console.error("WebSocket Error:", error);
-    };
+    socket.onclose = () => console.log("WebSocket connection closed.");
+    socket.onerror = (error) => console.error("WebSocket Error:", error);
 
     ws = socket;
 }
 
 function handleWebSocketMessage(data) {
-    if (data.type === 'start_of_stream') {
-        const p = document.createElement('p');
-        const strong = document.createElement('strong');
-        strong.textContent = 'Gemma: ';
-        p.appendChild(strong);
-        chatWindow.appendChild(p);
-        currentGemmaMessageElement = p;
-        tokenQueue = [];
-        streamEnded = false; // Reset the flag for the new stream
-        if (animationIntervalId) {
-            clearInterval(animationIntervalId);
-            animationIntervalId = null;
-        }
-    } else if (data.type === 'stream') {
-        tokenQueue.push(data.token);
-        processTokenQueue();
-    } else if (data.type === 'end_of_stream') {
-        // --- THE FIX ---
-        // Don't nullify the element here. Just set the flag.
-        streamEnded = true;
-    } else if (data.type === 'error') {
-        appendMessage("Error", data.message);
-    } else if (data.type === 'history') {
-        chatWindow.innerHTML = '';
-        data.messages.forEach(msg => {
-            appendMessage(msg.role === 'user' ? 'You' : 'Gemma', msg.content);
-        });
+    switch (data.type) {
+        case 'start_of_stream':
+            currentGemmaMessageElement = createMessageBubble('gemma');
+            const bubble = currentGemmaMessageElement.querySelector('.message-bubble');
+            bubble.setAttribute('data-raw-text', ''); // Initialize raw text
+            showThinkingIndicator(false); // Hide thinking indicator
+            streamEnded = false;
+            tokenQueue = [];
+            if (animationIntervalId) clearInterval(animationIntervalId);
+            processTokenQueue(); // Start the queue processor
+            break;
+        case 'stream':
+            tokenQueue.push(data.token);
+            break;
+        case 'end_of_stream':
+            streamEnded = true;
+            break;
+        case 'error':
+            appendMessage("Error", data.message);
+            showThinkingIndicator(false);
+            break;
+        case 'history':
+            chatWindow.innerHTML = '';
+            data.messages.forEach(msg => {
+                appendMessage(msg.role === 'user' ? 'You' : 'Gemma', msg.content);
+            });
+            break;
     }
 }
 
-// --- Conversation Management & Other Functions ---
+function appendMessage(sender, text) {
+    const role = (sender === 'You' || sender === 'user') ? 'user' : 'gemma';
+    const messageElement = createMessageBubble(role);
+    const bubble = messageElement.querySelector('.message-bubble');
 
-/**
- * Creates the authorization headers for API requests.
- * Redirects to login if the token is missing.
- * @returns {HeadersInit|null}
- */
-function getAuthHeaders() {
-    const token = localStorage.getItem("access_token");
-    if (!token) {
-        console.error("No access token found. Redirecting to login.");
-        window.location.href = "/login.html";
-        return null;
+    if (role === 'gemma') {
+        bubble.innerHTML = marked.parse(text); // Use marked.parse for history
+    } else {
+        bubble.textContent = text;
     }
-    return {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-    };
+    
+    chatWindow.scrollTop = chatWindow.scrollHeight;
 }
+
+function createMessageBubble(role) {
+    const messageWrapper = document.createElement('div');
+    messageWrapper.classList.add('chat-message', role);
+
+    const bubble = document.createElement('div');
+    bubble.classList.add('message-bubble');
+    
+    messageWrapper.appendChild(bubble);
+    chatWindow.appendChild(messageWrapper);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+    
+    return messageWrapper;
+}
+
+function showThinkingIndicator(show) {
+    if (show && !thinkingIndicator) {
+        thinkingIndicator = createMessageBubble('gemma');
+        thinkingIndicator.querySelector('.message-bubble').textContent = "Gemma is thinking...";
+    } else if (!show && thinkingIndicator) {
+        thinkingIndicator.remove();
+        thinkingIndicator = null;
+    }
+}
+
+// --- Conversation Management ---
 
 async function fetchAndRenderConversations() {
     const headers = getAuthHeaders();
-    if (!headers) return; // Stop if no token
+    if (!headers) return;
 
     try {
-        // Use the headers in the fetch request
         const response = await fetch('/conversations', { headers });
-
         if (!response.ok) {
-            // If unauthorized, redirect to login
-            if (response.status === 401) {
-                window.location.href = "/login.html";
-            }
+            if (response.status === 401) window.location.href = "/login";
             throw new Error('Failed to fetch conversations');
         }
-
         const data = await response.json();
         conversationList.innerHTML = '';
         data.forEach(conv => {
             const li = document.createElement('li');
-            li.textContent = conv.title;
+            li.className = 'list-group-item';
+            li.textContent = conv.title || 'New Chat';
             li.dataset.id = conv.id;
             if (conv.id === activeConversationId) li.classList.add('active');
             conversationList.appendChild(li);
         });
 
-        // If no conversation is active, and there are conversations, activate the first one.
         if (!activeConversationId && data.length > 0) {
             setActiveConversation(data[0].id);
         } else if (data.length === 0) {
-            // If the user has no conversations at all, create a new one.
             await createNewConversation();
         }
     } catch (error) {
@@ -227,26 +182,18 @@ async function fetchAndRenderConversations() {
 
 async function createNewConversation() {
     const headers = getAuthHeaders();
-    if (!headers) return; // Stop if no token
+    if (!headers) return;
 
     try {
         const response = await fetch('/conversations', {
             method: 'POST',
-            headers: headers, // Use the authenticated headers
+            headers: headers,
             body: JSON.stringify({ title: "New Chat" })
         });
-
-        if (!response.ok) {
-            if (response.status === 401) window.location.href = "/login.html";
-            throw new Error('Failed to create new conversation');
-        }
-
+        if (!response.ok) throw new Error('Failed to create new conversation');
         const newConv = await response.json();
-        // After creating, refresh the whole list to ensure UI is consistent
-        // and activate the new conversation.
         await fetchAndRenderConversations();
         setActiveConversation(newConv.id);
-
     } catch (error) {
         console.error("Error creating new conversation:", error);
     }
@@ -261,12 +208,67 @@ function setActiveConversation(id) {
     connectWebSocket(id);
 }
 
-async function initializeApp() {
-    await fetchAndRenderConversations();
+function getAuthHeaders() {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+        window.location.href = "/login";
+        return null;
+    }
+    return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-// --- Event Listeners ---
+// --- File Upload Logic ---
+fileInput.addEventListener('change', async (event) => {
+    if (!activeConversationId) {
+        alert("Please select a conversation before uploading files.");
+        return;
+    }
+    const files = event.target.files;
+    if (!files.length) return;
+
+    const formData = new FormData();
+    for (const file of files) {
+        formData.append('files', file);
+    }
+
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+        window.location.href = "/login";
+        return;
+    }
+
+    try {
+        showThinkingIndicator(true); // Show indicator during upload
+        const response = await fetch(`/conversations/${activeConversationId}/files`, {
+            method: 'POST',
+            body: formData,
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'File upload failed');
+        }
+        alert('Files uploaded successfully!');
+        fileInput.value = '';
+        // Refresh chat history to show server-side confirmation
+        connectWebSocket(activeConversationId); 
+    } catch (error) {
+        console.error('File Upload Error:', error);
+        alert(`Error uploading files: ${error.message}`);
+    } finally {
+        showThinkingIndicator(false); // Hide indicator after upload
+    }
+});
+
+// --- Event Listeners & Initialization ---
+document.addEventListener('DOMContentLoaded', fetchAndRenderConversations);
+
 newChatBtn.addEventListener('click', createNewConversation);
+
+logoutBtn.addEventListener('click', () => {
+    localStorage.removeItem('access_token');
+    window.location.href = '/login';
+});
 
 conversationList.addEventListener('click', (event) => {
     if (event.target && event.target.tagName === 'LI') {
@@ -284,18 +286,6 @@ chatForm.addEventListener("submit", function(event) {
         appendMessage("You", message);
         ws.send(JSON.stringify({ message: message }));
         messageInput.value = '';
+        showThinkingIndicator(true);
     }
 });
-
-function appendMessage(sender, text) {
-    const messageElement = document.createElement('p');
-    const strong = document.createElement('strong');
-    strong.textContent = `${sender}: `;
-    messageElement.appendChild(strong);
-    messageElement.append(document.createTextNode(text));
-    chatWindow.appendChild(messageElement);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
-}
-
-// --- App Initialization ---
-document.addEventListener('DOMContentLoaded', initializeApp);
