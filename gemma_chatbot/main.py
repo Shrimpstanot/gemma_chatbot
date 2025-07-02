@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import os
 import shutil
@@ -239,6 +240,9 @@ async def websocket_endpoint(
     # Send the loaded history to the client
     await websocket.send_json({"type": "history", "messages": chat_history_list})
 
+    # Create a lock for this specific WebSocket connection to prevent race conditions
+    connection_lock = asyncio.Lock()
+
     try:
         while True:
             # Receive incoming messages from the WebSocket client
@@ -247,67 +251,69 @@ async def websocket_endpoint(
 
             if not message_text:
                 continue
-            
-            # Save the user's message to the database
-            user_message = Message(
-                role="user",
-                content=message_text,
-                conversation_id=conversation_id,
-                created_at=datetime.datetime.now(datetime.timezone.utc)
-            )
-            db.add(user_message)
-            await db.commit()
-            
-            # Update the in-memory chat history list with the new user message
-            chat_history_list.append({"role": "user", "content": message_text})
 
-            # RAG Integration: Query the vector store for relevant documents based on the user's message
-            relevant_docs = await query_vector_store(message_text, conversation_id)
-            
-            # Construct the augmented prompt for the LLM, including retrieved context if available
-            if relevant_docs:
-                context = "\n".join([doc.page_content for doc in relevant_docs])
-                augmented_prompt = (
-                    f"Based on the following context, please answer the user's question.\n\n"
-                    f"Context:\n---\n{context}\n---\n\n"
-                    f"User's Question: {message_text}"
+            # Acquire the lock before processing the message
+            async with connection_lock:
+                # Save the user's message to the database
+                user_message = Message(
+                    role="user",
+                    content=message_text,
+                    conversation_id=conversation_id,
+                    created_at=datetime.datetime.now(datetime.timezone.utc)
                 )
-                # Combine recent chat history with the augmented prompt for the LLM
-                final_model_contents = [turn["content"] for turn in chat_history_list[-4:]] + [augmented_prompt]
-            else:
-                # If no relevant documents, send only the recent chat history to the LLM
-                final_model_contents = [turn["content"] for turn in chat_history_list]
+                db.add(user_message)
+                await db.commit()
+                
+                # Update the in-memory chat history list with the new user message
+                chat_history_list.append({"role": "user", "content": message_text})
 
-            # Stream the response from the Gemma model
-            stream = client.models.generate_content_stream(
-                model="gemma-3-27b-it",
-                contents=final_model_contents,
-                config=types.GenerateContentConfig(temperature=0.7)
-            )
+                # RAG Integration: Query the vector store for relevant documents based on the user's message
+                relevant_docs = await query_vector_store(message_text, conversation_id)
+                
+                # Construct the augmented prompt for the LLM, including retrieved context if available
+                if relevant_docs:
+                    context = "\n".join([doc.page_content for doc in relevant_docs])
+                    augmented_prompt = (
+                        f"Based on the following context, please answer the user's question.\n\n"
+                        f"Context:\n---\n{context}\n---\n\n"
+                        f"User's Question: {message_text}"
+                    )
+                    # Combine recent chat history with the augmented prompt for the LLM
+                    final_model_contents = [turn["content"] for turn in chat_history_list[-4:]] + [augmented_prompt]
+                else:
+                    # If no relevant documents, send only the recent chat history to the LLM
+                    final_model_contents = [turn["content"] for turn in chat_history_list]
 
-            # Accumulate the streamed response and send tokens to the client
-            full_response_text = []
-            await websocket.send_json({"type": "start_of_stream"})
-            for chunk in stream:
-                if chunk.text:
-                    full_response_text.append(chunk.text)
-                    await websocket.send_json({"type": "stream", "token": chunk.text})
-            await websocket.send_json({"type": "end_of_stream"})
+                # Stream the response from the Gemma model
+                stream = client.models.generate_content_stream(
+                    model="gemma-3-27b-it",
+                    contents=final_model_contents,
+                    config=types.GenerateContentConfig(temperature=0.7)
+                )
 
-            final_content = "".join(full_response_text)
+                # Accumulate the streamed response and send tokens to the client
+                full_response_text = []
+                await websocket.send_json({"type": "start_of_stream"})
+                for chunk in stream:
+                    if chunk.text:
+                        full_response_text.append(chunk.text)
+                        await websocket.send_json({"type": "stream", "token": chunk.text})
+                await websocket.send_json({"type": "end_of_stream"})
 
-            # Save the complete assistant message to the database
-            assistant_message = Message(
-                role="assistant",
-                content=final_content,
-                conversation_id=conversation_id,
-                created_at=datetime.datetime.now(datetime.timezone.utc)
-            )
-            db.add(assistant_message)
-            await db.commit()
+                final_content = "".join(full_response_text)
 
-            # Update the in-memory chat history list with the new assistant message
-            chat_history_list.append({"role": "assistant", "content": final_content})
+                # Save the complete assistant message to the database
+                assistant_message = Message(
+                    role="assistant",
+                    content=final_content,
+                    conversation_id=conversation_id,
+                    created_at=datetime.datetime.now(datetime.timezone.utc)
+                )
+                db.add(assistant_message)
+                await db.commit()
+
+                # Update the in-memory chat history list with the new assistant message
+                chat_history_list.append({"role": "assistant", "content": final_content})
 
     except WebSocketDisconnect:
         print(f"Client disconnected from conversation {conversation_id}.")

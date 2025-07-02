@@ -6,6 +6,7 @@ const newChatBtn = document.getElementById('new-chat-btn');
 const conversationList = document.getElementById('conversation-list');
 const fileInput = document.getElementById('file-input');
 const logoutBtn = document.getElementById('logout-btn');
+const sendBtn = document.getElementById('send-btn');
 
 // --- State Management ---
 let activeConversationId = null;
@@ -19,30 +20,39 @@ let animationIntervalId = null;
 let streamEnded = false;
 
 function processTokenQueue() {
-    if (animationIntervalId) return; // Animation is already running
+    if (animationIntervalId) return;
 
     animationIntervalId = setInterval(() => {
         if (tokenQueue.length > 0) {
             const token = tokenQueue.shift();
             if (currentGemmaMessageElement) {
                 const bubble = currentGemmaMessageElement.querySelector('.message-bubble');
-                // Append the raw token to a temporary storage or directly to the bubble's text content
-                // For simplicity, we'll just re-parse the whole thing each time.
                 const currentText = bubble.getAttribute('data-raw-text') + token;
                 bubble.setAttribute('data-raw-text', currentText);
                 bubble.innerHTML = marked.parse(currentText);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
             }
         } else if (streamEnded) {
-            // Queue is empty and stream has ended
             clearInterval(animationIntervalId);
             animationIntervalId = null;
             currentGemmaMessageElement = null;
-            streamEnded = false; // Reset for next message
+            streamEnded = false;
+            setChatState('idle'); // Stream is fully finished, app is idle
         }
-    }, 10); // 10ms delay as requested
+    }, 10);
 }
 
+// --- UI State Controller ---
+function setChatState(state) {
+    const isBusy = state === 'awaiting_response';
+    messageInput.disabled = isBusy;
+    sendBtn.disabled = isBusy;
+    fileInput.disabled = isBusy;
+    chatForm.style.opacity = isBusy ? 0.5 : 1;
+    if (!isBusy) {
+        messageInput.focus();
+    }
+}
 
 // --- WebSocket & Message Handling ---
 
@@ -72,8 +82,14 @@ function connectWebSocket(conversationId) {
         handleWebSocketMessage(data);
     };
 
-    socket.onclose = () => console.log("WebSocket connection closed.");
-    socket.onerror = (error) => console.error("WebSocket Error:", error);
+    socket.onclose = () => {
+        console.log("WebSocket connection closed.");
+        setChatState('idle'); // Ensure UI is unlocked if connection closes
+    };
+    socket.onerror = (error) => {
+        console.error("WebSocket Error:", error);
+        setChatState('idle');
+    };
 
     ws = socket;
 }
@@ -83,12 +99,12 @@ function handleWebSocketMessage(data) {
         case 'start_of_stream':
             currentGemmaMessageElement = createMessageBubble('gemma');
             const bubble = currentGemmaMessageElement.querySelector('.message-bubble');
-            bubble.setAttribute('data-raw-text', ''); // Initialize raw text
-            showThinkingIndicator(false); // Hide thinking indicator
+            bubble.setAttribute('data-raw-text', '');
+            showThinkingIndicator(false);
             streamEnded = false;
             tokenQueue = [];
             if (animationIntervalId) clearInterval(animationIntervalId);
-            processTokenQueue(); // Start the queue processor
+            processTokenQueue();
             break;
         case 'stream':
             tokenQueue.push(data.token);
@@ -99,6 +115,7 @@ function handleWebSocketMessage(data) {
         case 'error':
             appendMessage("Error", data.message);
             showThinkingIndicator(false);
+            setChatState('idle');
             break;
         case 'history':
             chatWindow.innerHTML = '';
@@ -115,7 +132,7 @@ function appendMessage(sender, text) {
     const bubble = messageElement.querySelector('.message-bubble');
 
     if (role === 'gemma') {
-        bubble.innerHTML = marked.parse(text); // Use marked.parse for history
+        bubble.innerHTML = marked.parse(text);
     } else {
         bubble.textContent = text;
     }
@@ -219,6 +236,11 @@ function getAuthHeaders() {
 
 // --- File Upload Logic ---
 fileInput.addEventListener('change', async (event) => {
+    if (sendBtn.disabled) { // Check state via button's disabled property
+        alert("Please wait for the current response to finish before uploading a file.");
+        return;
+    }
+
     if (!activeConversationId) {
         alert("Please select a conversation before uploading files.");
         return;
@@ -237,8 +259,10 @@ fileInput.addEventListener('change', async (event) => {
         return;
     }
 
+    setChatState('awaiting_response');
+    showThinkingIndicator(true);
+
     try {
-        showThinkingIndicator(true); // Show indicator during upload
         const response = await fetch(`/conversations/${activeConversationId}/files`, {
             method: 'POST',
             body: formData,
@@ -250,18 +274,21 @@ fileInput.addEventListener('change', async (event) => {
         }
         alert('Files uploaded successfully!');
         fileInput.value = '';
-        // Refresh chat history to show server-side confirmation
-        connectWebSocket(activeConversationId); 
+        connectWebSocket(activeConversationId);
     } catch (error) {
         console.error('File Upload Error:', error);
         alert(`Error uploading files: ${error.message}`);
     } finally {
-        showThinkingIndicator(false); // Hide indicator after upload
+        showThinkingIndicator(false);
+        setChatState('idle');
     }
 });
 
 // --- Event Listeners & Initialization ---
-document.addEventListener('DOMContentLoaded', fetchAndRenderConversations);
+document.addEventListener('DOMContentLoaded', () => {
+    fetchAndRenderConversations();
+    setChatState('idle'); // Set initial state
+});
 
 newChatBtn.addEventListener('click', createNewConversation);
 
@@ -281,8 +308,11 @@ conversationList.addEventListener('click', (event) => {
 
 chatForm.addEventListener("submit", function(event) {
     event.preventDefault();
+    if (sendBtn.disabled) return; // Guard against submission when busy
+
     const message = messageInput.value.trim();
     if (message && ws && ws.readyState === WebSocket.OPEN) {
+        setChatState('awaiting_response');
         appendMessage("You", message);
         ws.send(JSON.stringify({ message: message }));
         messageInput.value = '';
