@@ -7,11 +7,15 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
+from starlette.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from jose import jwt, JWTError
 from sqladmin import Admin, ModelView
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Local application imports
 from database import get_db, engine
@@ -58,10 +62,22 @@ class UserSchema(BaseModel):
     class Config:
         orm_mode = True
 
+# Rate Limiter
+limiter = Limiter(key_func=get_remote_address) # Initialize the rate limiter with the ip address as the identifier
+
 # FastAPI application initialization
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Dependency injection for database session
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request, exc):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded: {exc.detail}"},
+    )
 
 # Initialize SQLAdmin for admin interface
 authentication_backend = AdminAuth(secret_key=SECRET_KEY)
@@ -102,6 +118,7 @@ async def register():
     return FileResponse("static/register.html")
 
 @app.post("/users/", response_model=UserSchema)
+@limiter.limit("10/hour") # Apply rate limiting to the user creation endpoint
 async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     # Hash the user's password before storing it
     hashed_password = pwd_context.hash(user_data.password)
@@ -117,6 +134,7 @@ async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db))
     return new_user
 
 @app.post("/token")
+@limiter.limit("5/minute")  # Apply rate limiting to the login endpoint
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # Authenticate user credentials
     user = await get_user(db, form_data.username)
