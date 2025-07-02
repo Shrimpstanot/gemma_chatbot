@@ -1,5 +1,5 @@
 # models.py
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, func
+from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, DateTime, Text, func
 from sqlalchemy.orm import DeclarativeBase, relationship 
 from datetime import datetime
 from database import Base  
@@ -13,6 +13,7 @@ class User(Base):
     email = Column(String(100), unique=True, index=True)
     hashed_password = Column(String(128), nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
+    is_admin = Column(Boolean, default=False, nullable=False)
 
     # This relationship links a User to their Conversations
     # 'back_populates' creates a two-way link

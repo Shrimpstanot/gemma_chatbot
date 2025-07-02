@@ -10,11 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from jose import jwt, JWTError
+from sqladmin import Admin, ModelView
 
 # Local application imports
-from database import get_db
+from database import get_db, engine
 from models import Message, Conversation, User
 from security import get_current_user, SECRET_KEY, ALGORITHM, verify_password, create_access_token, get_user, pwd_context
+from admin import AdminAuth
 from rag import process_file_and_update_vector_store, query_vector_store
 
 # Google GenAI client initialization
@@ -58,6 +60,18 @@ class UserSchema(BaseModel):
 # FastAPI application initialization
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# Initialize SQLAdmin for admin interface
+authentication_backend = AdminAuth(secret_key=SECRET_KEY)
+admin = Admin(app, engine, authentication_backend=authentication_backend)
+class UserAdmin(ModelView, model=User):
+    column_list = [User.id, User.username, User.email, User.created_at, User.is_admin]
+class ConversationAdmin(ModelView, model=Conversation):
+    column_list = [Conversation.id, Conversation.title, Conversation.user_id, Conversation.created_at]
+admin.add_view(UserAdmin)
+admin.add_view(ConversationAdmin)
+
 
 # Helper function for WebSocket authentication
 async def get_current_user_from_token(token: str, db: AsyncSession) -> User | None:
