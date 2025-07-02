@@ -2,10 +2,11 @@ import asyncio
 import datetime
 import os
 import shutil
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.responses import JSONResponse
 from sqlalchemy import select
@@ -32,6 +33,10 @@ import dotenv
 dotenv.load_dotenv(dotenv_path=".env")
 GEMMA_API_KEY = os.getenv("GEMMA_API_KEY")
 client = genai.Client(api_key=GEMMA_API_KEY)
+
+# FastAPI application initialization
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Pydantic Schemas for data validation and serialization
 class ConversationBase(BaseModel):
@@ -65,9 +70,22 @@ class UserSchema(BaseModel):
 # Rate Limiter
 limiter = Limiter(key_func=get_remote_address) # Initialize the rate limiter with the ip address as the identifier
 
-# FastAPI application initialization
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# CORS configuration to allow requests from the frontend
+origins = [
+    "http://localhost:3000",  # React frontend
+    "http://localhost:8000",  # FastAPI backend
+    "http://127.0.0.1:8000",  # FastAPI backend (alternative)
+    "http://127.0.0.1",  # FastAPI backend (alternative)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins, 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Dependency injection for database session
 app.state.limiter = limiter
@@ -118,8 +136,8 @@ async def register():
     return FileResponse("static/register.html")
 
 @app.post("/users/", response_model=UserSchema)
-@limiter.limit("10/hour") # Apply rate limiting to the user creation endpoint
-async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/hour")  # Apply rate limiting to the user creation endpoint
+async def create_user(request: Request, user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     # Hash the user's password before storing it
     hashed_password = pwd_context.hash(user_data.password)
     new_user = User(
@@ -135,7 +153,7 @@ async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db))
 
 @app.post("/token")
 @limiter.limit("5/minute")  # Apply rate limiting to the login endpoint
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # Authenticate user credentials
     user = await get_user(db, form_data.username)
     if not user or not verify_password(form_data.password, user.hashed_password):
