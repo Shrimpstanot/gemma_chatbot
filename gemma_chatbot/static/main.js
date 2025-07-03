@@ -65,7 +65,8 @@ function connectWebSocket(conversationId) {
         return;
     }
 
-    const socket = new WebSocket(`ws://${window.location.host}/ws/${conversationId}`);
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const socket = new WebSocket(`${protocol}://${window.location.host}/ws/${conversationId}`);
 
     socket.onopen = () => {
         console.log("WebSocket connection established.");
