@@ -22,6 +22,9 @@ from slowapi.errors import RateLimitExceeded
 from database import get_db, engine
 from models import Message, Conversation, User
 from security import get_current_user, SECRET_KEY, ALGORITHM, verify_password, create_access_token, get_user, pwd_context
+# Rate Limiter
+limiter = Limiter(key_func=get_remote_address) # Initialize the rate limiter with the ip address as the identifier
+
 from admin import AdminAuth
 from rag import process_file_and_update_vector_store, query_vector_store
 
@@ -67,8 +70,6 @@ class UserSchema(BaseModel):
     class Config:
         orm_mode = True
 
-# Rate Limiter
-limiter = Limiter(key_func=get_remote_address) # Initialize the rate limiter with the ip address as the identifier
 
 
 # CORS configuration to allow requests from the frontend
