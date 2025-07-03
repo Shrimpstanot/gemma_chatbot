@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   app:
     build: .
@@ -11,6 +10,9 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - ALGORITHM=${ALGORITHM}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - REDIS_URL=${REDIS_URL}
+    depends_on:
+      - redis
   nginx:
     image: nginx:latest
     ports:
@@ -21,3 +23,6 @@ services:
       - ./certs:/etc/nginx/certs
     depends_on:
       - app
+  redis:
+    image: redis:latest
+    restart: always

@@ -5,6 +5,9 @@ WORKDIR /app
 COPY requirements.txt .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Add the directory where pip installs command-line scripts to the PATH
+ENV PATH="/root/.local/bin:${PATH}"
 # Copy the application code
 COPY . .
 # Expose the port the app runs on

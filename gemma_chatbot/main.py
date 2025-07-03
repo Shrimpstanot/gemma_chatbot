@@ -23,7 +23,8 @@ from database import get_db, engine
 from models import Message, Conversation, User
 from security import get_current_user, SECRET_KEY, ALGORITHM, verify_password, create_access_token, get_user, pwd_context
 # Rate Limiter
-limiter = Limiter(key_func=get_remote_address) # Initialize the rate limiter with the ip address as the identifier
+redis_url = os.getenv("REDIS_URL", "memory://")
+limiter = Limiter(key_func=get_remote_address, storage_uri=redis_url)
 
 from admin import AdminAuth
 from rag import process_file_and_update_vector_store, query_vector_store
