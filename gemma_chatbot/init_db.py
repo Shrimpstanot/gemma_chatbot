@@ -1,5 +1,6 @@
 import asyncio
 from database import engine, Base
+from models import User, Message, Conversation
 
 async def init_db():
     """Initialize the database and create tables."""
@@ -8,8 +9,8 @@ async def init_db():
         await conn.run_sync(Base.metadata.drop_all) # Drop all tables if they exist
         await conn.run_sync(Base.metadata.create_all) # Create all tables
     await engine.dispose()  # Dispose the engine after operations
-    print("Database initialized and tables created.")
-    
+    print(f"Database initialized and tables created: {User.__table__.name}, {Message.__table__.name}, {Conversation.__table__.name}")
+
 if __name__ == "__main__":
     # Run the init_db function to initialize the database
     asyncio.run(init_db())
