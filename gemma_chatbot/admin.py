@@ -1,14 +1,12 @@
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
-from starlette.responses import Response
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from limits import RateLimitItemPerMinute
 
 from database import SessionLocal
 from models import User
 from security import verify_password, create_access_token
-from main import limiter
+from shared import limiter
 from slowapi.util import get_remote_address
 
 

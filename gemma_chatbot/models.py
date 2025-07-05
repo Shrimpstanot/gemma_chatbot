@@ -1,7 +1,6 @@
 # models.py
 from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, DateTime, Text, func
-from sqlalchemy.orm import DeclarativeBase, relationship 
-from datetime import datetime
+from sqlalchemy.orm import relationship 
 from database import Base  
 
 # -- Our three models --

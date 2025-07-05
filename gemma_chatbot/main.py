@@ -14,25 +14,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from jose import jwt, JWTError
 from sqladmin import Admin, ModelView
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
-# Local application imports
-from database import get_db, engine
-from models import Message, Conversation, User
-from security import get_current_user, SECRET_KEY, ALGORITHM, verify_password, create_access_token, get_user, pwd_context
-# Rate Limiter
-redis_url = os.getenv("REDIS_URL", "memory://")
-limiter = Limiter(key_func=get_remote_address, storage_uri=redis_url)
-
-from admin import AdminAuth
 from rag import process_file_and_update_vector_store, query_vector_store
 
 # Google GenAI client initialization
 from google import genai
 from google.genai import types
 import dotenv
+
+# Local application imports
+from database import get_db, engine
+from models import Message, Conversation, User
+from security import get_current_user, SECRET_KEY, ALGORITHM, verify_password, create_access_token, get_user, pwd_context
+from admin import AdminAuth
+from shared import limiter
+
 
 dotenv.load_dotenv(dotenv_path=".env")
 GEMMA_API_KEY = os.getenv("GEMMA_API_KEY")

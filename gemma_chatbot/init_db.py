@@ -1,6 +1,5 @@
 import asyncio
 from database import engine, Base
-from models import User, Conversation, Message
 
 async def init_db():
     """Initialize the database and create tables."""
