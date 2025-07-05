@@ -10,7 +10,7 @@ This repository contains the source code for a full-stack, production-ready gene
 -   **⚙️ Production-Grade Backend**: Asynchronous API built with FastAPI, following modern software design principles to handle I/O-bound operations efficiently.
 -   **🔒 Security & Administration**:
     -   **Admin Panel**: A secure `/admin` interface (via SQLAdmin) for managing users and conversations.
-    -   **Rate Limiting**: Protects login and registration endpoints from brute-force attacks using a Redis-backed `slowapi`.
+    -   **Rate Limiting**: Protects login and registration endpoints from brute-force attacks using a Redis-backed `slowapi`. 
     -   **CORS**: Properly configured Cross-Origin Resource Sharing.
 -   **🚀 DevOps & Automation**:
     -   **Containerized Environment**: The entire stack (FastAPI app, Nginx, Redis) is orchestrated with Docker Compose for easy setup and deployment.
